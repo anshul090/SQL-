@@ -1,0 +1,1023 @@
+# Join two table without common column and also calculate total count and group by count in proc sql
+without using partition by clause
+
+# Also demonstrate how to join two table without common column using inner join and full join syntax
+
+# inner join 
+		proc sql noprint;
+		create table t1 as
+select * from
+(
+(select count , count(*) as Frequency  from  cm_hi_chip_famid
+		 group by count) as tab_a
+inner join
+(
+
+		select count(*) as Total from cm_hi_chip_famid 
+) as tab_b		 
+on 1 = 1
+);
+quit;
+
+# fulll join syntax to combine two table without common column
+
+		proc sql noprint;
+		create table t as
+		select * from 
+		( (select count , count(*) as Frequency  from  cm_hi_chip_famid
+		 group by count) as tab_a , (select count(*) as Total from cm_hi_chip_famid) as tab_b );
+/*		union all*/
+/*		select count(*) as Total from cm_hi_chip_famid as tab_b;*/
+		 
+		
+		 quit;
+
+
+
+-- Explode data into single unti level recs
+Create Table Orders
+(  
+            order_id nvarchar (20),
+       Item nvarchar (20),
+      quantity int
+      
+)
+
+Insert Into Orders Values ('o1' , 'A1', 5)
+Insert Into Orders Values ('o2' , 'A2', 1)
+Insert Into Orders Values ('o3' , 'A3', 3)
+select o.order_id, o.item, a.num
+from orders o
+inner join (select row_number() over (order by object_id) as num from sys.all_objects) a
+            on o.quantity >= a.num
+
+
+
+
+
+
+Schema 1
+
+
+
+
+
+
+Create Table customer
+(
+    Id int primary key,
+    customer_name nvarchar(255),
+)
+Go
+
+Insert Into customer Values (1, 'Mark')
+Insert Into customer Values (2, 'Alex')
+Insert Into customer Values (3, 'Ben')
+
+
+Create Table Invoice
+(
+    Id int primary key,
+    invoice_number nvarchar(255),
+  customer_id int,
+  user_account_id int,
+  time_issued nvarchar(255),
+)
+Go
+
+Insert Into Invoice Values (1, '101', 1, 501, '2019-10-07 10:36:46.520')
+Insert Into Invoice Values (2, '102', 2, 702, '2019-10-09 11:12:46.520')
+Insert Into Invoice Values (3, '103', 3, 901, '2019-08-04 10:54:46.520')
+
+
+Create Table contact
+(
+    Id int primary key,
+    user_account_id int,
+  customer_id int,
+
+  contact_start_time nvarchar(255),
+)
+Go
+
+Insert Into contact Values (1, 501, 1,  '2019-10-07 9:32:46.520')
+Insert Into contact Values (2,  702, 3, '2019-10-09 10:36:46.520')
+Insert Into contact Values (3, 901,2,  '2019-08-04 11:36:46.520')
+
+
+with cte as
+(
+select i.customer_id, i.user_account_id, i.invoice_number, i.time_issued from invoice i
+where i.customer_id not in (
+select i.customer_id 
+
+from invoice i , contact c
+where i.customer_id = c.customer_id and i.user_account_id = c.user_account_id )
+), 
+cte2 as
+(
+
+select cte.*, c.contact_start_time  from cte, contact c
+where cte.customer_id = c.customer_id 
+and cast(c.contact_start_time as datetime)  > cast(cte.time_issued as datetime) 
+)
+
+select cte2.invoice_number, customer.customer_name from cte2 , customer 
+where cte2.customer_id = customer.id
+
+
+
+
+Create Table Employees
+(
+    Id int primary key,
+    Name nvarchar(50),
+    Gender nvarchar(10),
+    Salary int
+)
+Go
+
+Insert Into Employees Values (1, 'Mark', 'Male', 8000)
+Insert Into Employees Values (2, 'John', 'Male', 8000)
+Insert Into Employees Values (3, 'Pam', 'Female', 6000)
+Insert Into Employees Values (4, 'Sara', 'Female', 4000)
+Insert Into Employees Values (5, 'Todd', 'Male', 3500)
+Insert Into Employees Values (6, 'Mary', 'Female', 6000)
+Insert Into Employees Values (7, 'Ben', 'Male', 6500)
+Insert Into Employees Values (8, 'Jodi', 'Female', 4500)
+Insert Into Employees Values (9, 'Tom', 'Male', 7000)
+Insert Into Employees Values (10, 'Ron', 'Male', 6800)
+Go
+
+
+
+-- lead and lag followed by over clause
+2nd arg to lead is offset: how many obs to skip before putting the first obs for new variable. default is 1. in the below, third obs from sal wil be first for M because of offset of 2. 
+select *, m-salary as diff from 
+(select *, lead(salary, 2) over (order by ID) as m from employees) as tab
+
+
+-- Lag -peeche chalts hai us column ke. lag(salary, 2) means 2 observation peeche from sal, first two for newly derived var is null
+select *, m-salary as diff from 
+(select *, lag(salary, 2) over (order by ID) as m from employees) as tab
+--Finding avg salary in the full table using window functions
+
+ select *, avg(salary) over (order by salary desc rows between unbounded preceding and unbounded following) from employees
+-- or using subquery 
+ select *, (select avg(salary) from employees) as avgsal from employees
+
+
+-- Finding nth highest salary
+
+with cte as
+(
+ select *, dense_rank () over (order by salary desc) as denserank
+ from employees
+)
+
+-- Below query give duplicates 
+select top 1 salary from cte where denserank = 3
+
+-- Deleting duplicates from table
+delete Tab from 
+(
+select *, row_number() over (partition by id, name, gender, salary order by id) as rw from employees ) as tab
+where Tab.rw != 1;
+select * from employees
+-- Finding nth highest salary with partition groups (such as male and female)
+
+with cte as
+(
+ select *, dense_rank () over (partition by gender order by salary desc) as denserank
+ from employees
+)
+
+-- Below query give duplicates 
+select * from cte where denserank = 1
+
+-- Below query gives unique values for highest salary for male and female
+select distinct gender, salary from cte where denserank = 1
+
+
+-- Window function - comparing avg of las 5 observation to see if current observation is greater or not
+
+ with cte as
+ (
+ select *, row_number() over (order by salary desc) as rownum,
+ avg(salary) over 
+ (order 
+ by salary desc rows between 4 preceding and current row) as avg_sal 
+   from employees
+ )
+ select *, case 
+    when rownum > 4 and avg_sal > salary then 1
+    when rownum > 4 and avg_sal < salary then 0 
+                   else null
+                   end as test
+                           from cte
+
+
+--Employees earning More than their managers
+
+Create Table Employees
+(
+    Id int primary key,
+    Name nvarchar(50),
+    Gender nvarchar(10),
+    Salary int,
+    MID int
+)
+Go
+
+Insert Into Employees Values (1, 'Mark', 'Male', 8000,3)
+Insert Into Employees Values (2, 'John', 'Male', 3000,4)
+Insert Into Employees Values (3, 'Pam', 'Female', 6000,7)
+Insert Into Employees Values (4, 'Sara', 'Female', 4000, 9)
+
+Go
+
+
+
+select E.name as Employee, M.name as Manager, E.gender as EMpger , M.gender as Mgender, E.salary 
+from employees as E, employees as M
+where E.MID = M.id and E.salary > M.salary
+
+
+
+/* identify duplicate emails */
+Create Table Employees
+(
+    Id int primary key,
+    Email nvarchar(50)
+)
+Go
+
+Insert Into Employees Values (1, 'a@b.com')
+Insert Into Employees Values (2, 'c@d.com')
+Insert Into Employees Values (3, 'a@b.com' )
+
+
+Go
+
+with cte as
+(
+select count(ID) as con , Email  from employees group by Email having count(id) > 1
+ )
+ select Email from cte
+
+
+
+-- Customer who never orders (Non matching observations from two tables )
+Create Table Employees
+(
+    Id int primary key,
+    Name nvarchar(50)
+)
+Go
+
+Insert Into Employees Values (1, 'Joe')
+Insert Into Employees Values (2, 'Henry')
+Insert Into Employees Values (3, 'SAM' )
+Insert Into Employees Values (4, 'MAX' )
+
+Go
+
+Create Table Orders
+(
+    OId int,
+    Custid int
+)
+Go
+
+Insert Into Orders Values (1, 3)
+Insert Into Orders Values (2, 1)
+
+
+Go
+
+
+
+select Name
+from Employees
+where Id not in (select E.id from employees e inner join orders o on E.id = o.custid)
+
+
+-- Using correlated subquery- exists and not exists
+-- Exists and not exists are correlated subqueries with the 2nd table reference only in subquery select part
+
+select * from employees  e where not exists 
+(
+select *
+from orders o where e.id = o.custid)
+
+
+-- Keeping highest salary by department including duplicates
+Create Table Employees
+(
+    Id int primary key,
+    Name nvarchar(50),
+  DID int ,
+  salary int
+)
+Go
+
+Insert Into Employees Values (1, 'Joe', 1, 7000)
+Insert Into Employees Values (2, 'Henry', 1,9000)
+Insert Into Employees Values (3, 'SAM' , 2, 8000)
+Insert Into Employees Values (4, 'MAX',2,  6000 )
+Insert Into Employees Values (5, 'JIM',1, 9000 )
+Go
+
+Create Table Department
+(
+    Id int,
+    Name nvarchar(20)
+)
+Go
+
+Insert Into Department  Values (1, 'IT')
+Insert Into Department  Values (2, 'Sales')
+
+select d.name as department, e.salary
+from employees e inner join department d on e.did = d.id
+where salary in (select max(salary) from employees group by did)d)
+
+
+
+
+
+-- Finding top 3 highest salary in department- It is important to give an alias to the table when subquery is using from claues
+select * from (select e.*, o.dname, dense_rank () over (partition by dname order by salary desc) as dense_rank 
+from employees e inner join orders o on e.did= o.id) as x where  dense_rank <= 3
+
+
+
+-- Rising temperatuure 
+find where the temperature wa higher than previous day 
+
+-- using lag breaks because eve when we sort it by date, it will give 6th in o/p because its just lagging a record and subtracting unlike self join which will take care that the dates in between are missing like 5th, so 6th will 
+not show up.
+select * from (
+select *,  lag(temperature) over (order by (select 100)) as laged from (
+  select *, dense_rank() over (order by date) as date_sorted 
+ from weather 
+) as tab
+  ) as tab2
+where temperature > laged
+
+Use self join 
+CREATE TABLE Weather (
+    Id INT,
+    Date DATE,
+    Temperature INT
+);
+
+DELETE FROM Weather;
+
+INSERT INTO Weather VALUES
+(1, '2015-01-01', 10),
+(2, '2015-01-02', 25),
+(3, '2015-01-04', 20),
+(5, '2015-01-03', 32),
+(4, '2015-01-06', 30);
+
+Select W1.Id
+From Weather W1 JOIN Weather W2 
+ON day(W1.Date) = day(W2.Date) + 1
+Where W1.Temperature > W2.Temperature;
+
+
+
+-- Delete duplicate email
+
+Delete From Person
+Where Id not in (
+    Select minId From (
+        Select min(Id) AS minId, Email
+        From Person
+        Group by Email
+    ) AS tmp
+);
+select * from person
+
+
+--User trips cancellation (My sql)
+
+Select T.Request_at as Day, status, Round(Sum(If(Status = "cancelled_by_driver" , 1, 0))/ count(*), 2)  as cancel
+from Trips T join Users u 
+on T.client_id = u.users_id
+where Banned = "No" and Request_at between '2013-10-01' and '2013-10-03'
+group by Request_at
+order by request_at 
+
+
+
+-- Multiple CTE
+
+with cte as
+(
+Select *, row_number() over (order by ID) as rownum, avg(salary) over (order by Id rows between 4 preceding and current row) as pre5_sal from employees 
+ ),
+cte1 as
+(
+select *, case when rownum > 4 and pre5_sal > salary then 1
+ when rownum > 4 and pre5_sal < salary then 0
+ else null
+ end as test
+ from cte
+ )
+ 
+select sum(case when gender = 'Male' then avg_sal else 0 end -
+case when gender= 'Female' then avg_sal else 0 end) as diff 
+from
+(select avg(salary) as avg_sal , gender from cte1 
+group by gender) table3
+
+
+
+
+
+-- Date questions
+
+Create Table Employees
+(
+       ID int identity primary key,
+       Name nvarchar(50),
+       DateOfBirth DateTime
+)
+
+Insert Into Employees Values ('Tom', '2019-10-07 10:36:46.520')
+Insert Into Employees Values ('Sara', '2018-11-18 11:36:26.400')
+Insert Into Employees Values ('Bob', '2017-12-22 10:40:10.300')
+Insert Into Employees Values ('Alex', '2017-12-30 9:30:20.100')
+Insert Into Employees Values ('Charlie', '2017-11-25 7:25:14.700')
+Insert Into Employees Values ('David', '2017-10-09 8:26:14.800')
+Insert Into Employees Values ('Elsa', '2019-10-07 9:40:18.900')
+Insert Into Employees Values ('George', '2018-11-15 10:35:17.600')
+Insert Into Employees Values ('Mike', '2018-11-16 9:14:17.600')
+Insert Into Employees Values ('Nancy', '2018-11-17 11:16:18.600')
+Insert Into Employees Values ('Nik', '2019-10-08 11:16:18.600')
+
+--- month param in dateadd capture karta hai wo exact date jo hoti hai such as 3 march UTC date with -1 month in dateadd will capture 3 feb in query result
+
+select * from employees
+where cast(dateofbirth as date) between  dateadd(month, -1, cast(getdate() as date)) and 
+
+dateadd(day, -1, cast(getdate() as date)) 
+
+-- Born on a particular date 
+select name, dateofbirth, cast(dateofbirth as date) as datepart from employees
+where cast(dateofbirth as date) = '2017-10-09'
+
+-- Born between a time period 
+select name, dateofbirth, cast(dateofbirth as date) as datepart from employees
+where cast(dateofbirth as date) between '2017-11-01' and '2017-12-31'
+ 
+- Born on a particular date (day and month) excluding year
+
+select name , dateofbirth from employees
+where day(dateofbirth) = 9 and month(dateofbirth) = 10
+
+select name , dateofbirth from employees
+where year(dateofbirth) = 2017
+
+-- Born yesterday
+select name, dateofbirth from employees
+where cast(dateofbirth as date) = dateadd(day, -1, cast(getdate() as date))
+
+-- Born yesterday and today 
+select name, dateofbirth from employees
+where cast(dateofbirth as date) between 
+dateadd(day , -1, cast(getdate() as date)) and
+cast(getdate() as date)
+
+-- Born in last 7 days excluding today
+
+select name, dateofbirth from employees
+where cast(dateofbirth as date) between 
+dateadd(day , -7, cast(getdate() as date)) and
+dateadd(day, -1, cast(getdate() as date))
+
+
+-- Join 3 tables
+
+SELECT EmployeeName, DepartmentName, Gender
+FROM Employees
+JOIN Departments ON Employees.DepartmentID = Departments.DepartmentID
+JOIN Genders ON Employees.GenderID = Genders.GenderID
+
+
+-- group by works after joining all three tables and summary func work in last
+
+select departmentname , gender , count(employeename) as Total
+from employees e
+Join genders g on e.genderId = g.genderID
+join Departments d on e.departmentid = d.departmentid
+group by departmentname, gender
+order by departmentname, gender
+
+
+-- self join student enrolled in more than 2 courses
+CREATE TABLE Study (
+    SId nvarchar (50),
+    CID nvarchar (50),
+   Since INT
+);
+
+
+
+INSERT INTO Study VALUES
+('S1', 'C1', 2016),
+('S2', 'C1', 2017),
+('S1', 'C2', 2016),
+('S1', 'C3', 2016),
+('S1', 'C4', 2016),
+('S2', 'C12', 2017);
+
+select distinct sid 
+from study where  sid in (
+ select sid from
+  (
+  select  sid,
+                  count(cid) as cnt from study group by sid having count(cid) >2) as temp
+)
+
+select distinct t1.sid, t1.cid
+from study t1 , study t2
+where t1.sid = t2.sid and 
+t1.cid ! = t2.cid
+
+
+
+select count(distinct cid), sid
+from study s
+group by sid
+
+
+self join -ssn
+
+Create Table Employees
+(
+    Id int primary key,
+    O_SSN nvarchar(50),
+    V_ssn nvarchar(50),
+    Date Date
+)
+Go
+
+Insert Into Employees Values (1, '000-00-0001', '000-00-0002','2000-01-01')
+Insert Into Employees Values (2, '000-00-0002', '000-00-0001','2000-01-01')
+Insert Into Employees Values (9, '000-00-0003', '000-00-0001','2000-01-01')
+Insert Into Employees Values (3, '000-00-0003', '000-00-0004','2000-01-01')
+Insert Into Employees Values (4, '000-00-0005', '000-00-0006','2000-01-01')
+Insert Into Employees Values (5, '000-00-0007', '000-00-0008','2000-01-01')
+Insert Into Employees Values (6, '000-00-0008', '000-00-0007','2000-01-04')
+
+Go
+
+-- ager duplicate hoga toh dono column pe join karna padega otherwise error if we join ononly one column
+
+select e1.* from employees e1, employees e2
+where e1.o_ssn = e2.v_ssn and e1.v_ssn = e2.o_ssn and
+e1.date = e2.date
+
+-- Amazon livecode identify product that are sold on all days and no of times they are sold 
+
+Create Table Orders
+(  
+       Order_day  date, 
+       order_id nvarchar (20),
+       product_id nvarchar (20),
+      quantity int,
+      price int
+      
+)
+
+Insert Into Orders Values ('01-Jul-11', 'o1' , 'p1', 5, 5)
+Insert Into Orders Values ('01-Jul-11', 'o2' , 'p2', 2, 10)
+Insert Into Orders Values ('01-Jul-11', 'o3' , 'p3', 10, 25)
+Insert Into Orders Values ('01-Jul-11', 'o4' , 'p1', 20, 5)
+
+Insert Into Orders Values ('02-Jul-11', 'o5' , 'p3', 5, 25)
+Insert Into Orders Values ('02-Jul-11', 'o6' , 'p4', 6, 20)
+Insert Into Orders Values ('02-Jul-11', 'o7' , 'p1', 2, 25)
+Insert Into Orders Values ('02-Jul-11', 'o8' , 'p5', 1, 50)
+Insert Into Orders Values ('02-Jul-11', 'o9' , 'p6', 2, 50)
+Insert Into Orders Values ('01-Jul-11', 'o10' , 'p2', 4, 10)
+
+
+select product_id, count(order_day) as tot from orders where product_id in 
+(
+select o1.product_id
+from orders o1 , orders o2
+where o1.product_id = o2.product_id and
+day(o1.order_day) = day(o2.order_day) + 1)
+group by product_id
+
+
+Create Table Orders
+(  
+       Order_day  date, 
+       order_id nvarchar (20),
+       product_id nvarchar (20),
+      quantity int,
+      price int
+      
+)
+
+Insert Into Orders Values ('01-Jul-11', 'o1' , 'p1', 5, 5)
+Insert Into Orders Values ('01-Jul-11', 'o2' , 'p2', 2, 10)
+Insert Into Orders Values ('01-Jul-11', 'o3' , 'p3', 10, 25)
+Insert Into Orders Values ('01-Jul-11', 'o4' , 'p1', 20, 5)
+
+Insert Into Orders Values ('02-Jul-11', 'o5' , 'p3', 5, 25)
+Insert Into Orders Values ('02-Jul-11', 'o6' , 'p4', 6, 20)
+Insert Into Orders Values ('02-Jul-11', 'o7' , 'p1', 2, 25)
+Insert Into Orders Values ('02-Jul-11', 'o8' , 'p5', 1, 50)
+Insert Into Orders Values ('02-Jul-11', 'o9' , 'p6', 2, 50)
+Insert Into Orders Values ('01-Jul-11', 'o10' , 'p2', 4, 10)
+
+Insert Into Orders Values ('04-Jul-11', 'o10' , 'p1', 4, 10)
+Insert Into Orders Values ('04-Jul-11', 'o10' , 'p9', 4, 10)
+
+-- on subsequent days and then also on a particular date */
+select product_id, count(order_day) as tot from orders where product_id in 
+(
+select o1.product_id from orders o1 , orders o2
+where o1.product_id = o2.product_id and
+day(o1.order_day) = day(o2.order_day) + 3 and o1.product_id in 
+  (select o1.product_id
+from orders o1 , orders o2
+where o1.product_id = o2.product_id and
+day(o1.order_day) = day(o2.order_day) + 1 
+  ) 
+  )
+group by product_id
+
+
+-- Highest sold products on each date ( compute the total and rank the partition by total)
+
+with cte as
+(
+select *, dense_rank() over (partition by date order by total desc) as dense
+  from
+  (
+  select order_day as Date, product_id, price*quantity as Total from orders 
+) as tab
+ )
+select date, product_id, total from cte where dense = 1
+
+-- products orders on 2nd but not on 1st
+
+with cte as
+(select * from orders where order_day = '2011-07-01'
+ ), 
+ cte2 as
+ (select * from orders where order_day = '2011-07-02'
+ )
+select product_id from cte2 where product_id not in (
+select b.product_id from cte a inner join cte2 b on a.product_id= b.product_id)  
+
+-- using self join (above question)
+
+select product_id from orders where order_day = '2011-07-2' and product_id not in (
+select o1.product_id
+from orders o1 , orders o2
+where o1.product_id = o2.product_id  and 
+day(o1.order_day) = day(o2.order_day)+ 1
+)
+
+
+Using except
+select product_id from orders where day(order_day) = 2 
+
+except
+  
+select o1.product_id from orders o1, orders o2 where o1.product_id = o2.product_id and 
+day(o1.order_day) = day(o2.order_day) + 1
+
+
+
+o1 , orders o2 
+where o1.product_id = o2.product_id and 
+day(o1.order_day) = day(o2.order_day) + 1 
+and day(o1.order_day) = 2
+
+
+
+-- Transpose
+Create Table tblProductSales
+(
+ SalesAgent nvarchar(50),
+ SalesCountry nvarchar(50),
+ SalesAmount int
+)
+
+Insert into tblProductSales values('Tom', 'UK', 200)
+Insert into tblProductSales values('John', 'US', 180)
+Insert into tblProductSales values('John', 'UK', 260)
+Insert into tblProductSales values('David', 'India', 450)
+Insert into tblProductSales values('Tom', 'India', 350)
+Insert into tblProductSales values('David', 'US', 200)
+Insert into tblProductSales values('Tom', 'US', 130)
+Insert into tblProductSales values('John', 'India', 540)
+Insert into tblProductSales values('John', 'UK', 120)
+Insert into tblProductSales values('David', 'UK', 220)
+Insert into tblProductSales values('John', 'UK', 420)
+Insert into tblProductSales values('David', 'US', 320)
+Insert into tblProductSales values('Tom', 'US', 340)
+Insert into tblProductSales values('Tom', 'UK', 660)
+Insert into tblProductSales values('John', 'India', 430)
+Insert into tblProductSales values('David', 'India', 230)
+Insert into tblProductSales values('David', 'India', 280)
+Insert into tblProductSales values('Tom', 'UK', 480)
+Insert into tblProductSales values('John', 'US', 360)
+Insert into tblProductSales values('David', 'UK', 140)
+
+select Salesagent, India, US, UK
+from tblproductsales
+pivot 
+(
+  sum(salesamount)
+  for salescountry in (India, US, UK)
+  ) piv
+
+-- Total sales by orderday - if the product was not sold on a particular day then ad 0. Amazon Transpose
+--order day as columns and product
+
+Create Table Orders
+(  
+       Order_day  date, 
+       order_id nvarchar (20),
+       product_id nvarchar (20),
+      quantity int,
+      price int
+      
+)
+
+Insert Into Orders Values ('01-Jul-11', 'o1' , 'p1', 5, 5)
+Insert Into Orders Values ('01-Jul-11', 'o2' , 'p2', 2, 10)
+Insert Into Orders Values ('01-Jul-11', 'o3' , 'p3', 10, 25)
+Insert Into Orders Values ('01-Jul-11', 'o4' , 'p1', 20, 5)
+
+Insert Into Orders Values ('02-Jul-11', 'o5' , 'p3', 5, 25)
+Insert Into Orders Values ('02-Jul-11', 'o6' , 'p4', 6, 20)
+Insert Into Orders Values ('02-Jul-11', 'o7' , 'p1', 2, 25)
+Insert Into Orders Values ('02-Jul-11', 'o8' , 'p5', 1, 50)
+Insert Into Orders Values ('02-Jul-11', 'o9' , 'p6', 2, 50)
+Insert Into Orders Values ('02-Jul-11', 'o10' , 'p2', 4, 10)
+
+select *, eomonth(dateadd(month, 1, order_day), -2) as adding
+from orders
+
+# in this syntax we are not explicity doing group by first. If we dont do explict group by  then pass only those columns in select statement on which you want to do group by and column to be aggregated then pivot will do that for you 
+with cte as
+(
+select product_id, [2011-07-01] as "Total_Sales_01",[2011-07-02] as "Total_Sales_02"
+from
+(
+select product_id, order_day, quantity * price as Total
+from orders 
+) as temp
+pivot
+(
+  sum(total)
+  for order_day in ([2011-07-01], [2011-07-02])
+  ) as piv
+ )
+ select product_id, isnull(Total_Sales_01, 0) as "Total_Sales_01" , isnull(Total_Sales_02, 0)
+ "Total_Sales_02" from cte 
+
+
+# Alternate syntax
+# Here we are doing group by explicit which is not required because had we passed only the selected columns in first (innermost select query) , it should have been taken care by sql server.
+select product_id, order_day, sum(total) as Price from (
+select *,(price * quantity) as total from orders ) as tab
+group by product_id, order_day
+
+pivot
+(
+sum(price)
+for order_day in ([2011-07-01], [2011-07-02])
+) as piv
+
+
+-- product sold more than once each day
+
+select distinct order_day, product_id
+from 
+(select  product_id, order_day, count(order_day) over(partition by product_id, order_day order by order_day)
+ as cnt
+from orders) as temp
+
+where cnt >1
+
+
+
+
+
+-- unpivot
+Create Table ProductSales
+(
+ SalesAgent nvarchar(50),
+ India int,
+ US int,
+ UK int
+)
+Go
+
+Insert into ProductSales values ('David', 960, 520, 360)
+Insert into ProductSales values ('John', 970, 540, 800)
+Go
+select salesagent, country, salesamount
+from productsales
+unpivot
+(
+  Salesamount
+  for country in (India, US, UK)
+  ) as unpiv
+
+
+
+pivot and unpivot
+Create Table tblProductSales
+(
+     SalesAgent nvarchar(10),
+     Country nvarchar(10),
+     SalesAmount int
+)
+Go
+
+Insert into tblProductSales values('David','India',960)
+Insert into tblProductSales values('David','US',520)
+Insert into tblProductSales values('John','India',970)
+Insert into tblProductSales values('John','US',540)
+Go
+
+Insert into tblProductSales values('David','India',100)
+
+select salesagent, country, salesamount
+from
+(SELECT SalesAgent, India, US
+FROM tblProductSales
+PIVOT
+(
+     SUM(SalesAmount)
+     FOR Country IN (India, US)
+) AS PivotTable ) p
+unpivot
+(
+  salesamount
+  for country in (India, US)
+  ) as Unp
+
+
+-- Employee hired in last n months
+
+select *, datepart(month, hiredate) as Month_hire from employees
+where datediff(month, hiredate, cast(getdate() as date)) between 1 and 3
+
+
+
+-- Transform rows
+
+Create Table Countries
+(
+     Country nvarchar(50),
+     City nvarchar(50)
+)
+GO
+
+Insert into Countries values ('USA','New York')
+Insert into Countries values ('USA','Houston')
+Insert into Countries values ('USA','Dallas')
+
+Insert into Countries values ('India','Hyderabad')
+Insert into Countries values ('India','Bangalore')
+Insert into Countries values ('India','New Delhi')
+
+Insert into Countries values ('UK','London')
+Insert into Countries values ('UK','Birmingham')
+Insert into Countries values ('UK','Manchester')
+
+select country, city1 , city2, city3
+  from
+  (
+select *, 
+'city' + cast(row_number() over (partition by country order by country) as nvarchar(10))
+                        as rownum  from countries
+  ) as temp
+ pivot
+ (
+ max(City)
+   for rownum in (city1, city2, city3)
+   ) as piv
+
+
+-- Joining table without primary key foreign key relations
+
+Create table Departments
+(
+     ID int not null,
+     Name nvarchar(50),
+     Location nvarchar(50)
+)
+GO
+
+Create table Employees
+(
+     ID int,
+     Name nvarchar(50),
+     Gender nvarchar(50),
+     Salary int,
+     DepartmentId nvarchar(10)
+)
+GO
+
+- In above departmentid in employees is nvarchar and there is no pk fk relation but join will happen as long as the keys can be converted to have common data type.
+
+select e.name as Empname, d.name as Deptname 
+from departments d inner join employees e on e.departmentid = d.id
+
+
+Create table Students
+(
+     Id int primary key,
+     StudentName nvarchar(50),
+  cid int
+)
+Go
+
+Create table Teachers
+(
+     Id int primary key ,
+     TeacherName nvarchar(50),
+  cid int
+)
+Go
+
+Create table Students
+(
+     Id int primary key,
+     StudentName nvarchar(50),
+  cid int
+)
+Go
+
+Create table Teachers
+(
+     Id int primary key ,
+     TeacherName nvarchar(50),
+  cid int
+)
+Go
+
+Insert into students values (1,'Anshul',101)
+Insert into students values (2,'Nikhil',101)
+Insert into students values (3,'Akshay',102)
+Insert into students values (4,'Sahil',103)
+Insert into students values (5,'Sahil',102)
+
+Insert into Teachers values (1,'rekha',102)
+Insert into Teachers values (2,'rekha',103)
+Insert into Teachers values (3, 'Asha',101)
+
+-- Distinct students to a teacher (many courses example)
+
+with cte as
+(
+select s.studentname, s.cid, t.Teachername
+from students s inner join teachers t
+on s.cid = t.cid
+  )
+  select count(distinct studentname) as cnt, Teachername
+  from cte
+  group by teachername
+
+# Join and count in 1 step
+
+select count(distinct s.studentname) as studentcount, t.teachername from students s inner join teachers t 
+on s.cid = t.cid
+group by teachername
+
+
+Create table Students
+(
+     Id int ,
+     StudentName nvarchar(50),
+  cid int
+)
+Go
+Insert into students values (1,'Anshul',101)
+Insert into students values (2,'Nikhil',101)
+Insert into students values (3,'Akshay',102)
+Insert into students values (4,'Sahil',103)
+Insert into students values (5,'Sahil',102)
+Insert into students values (5,'Sahil',102)
+
+# remove duplicates by using row number and mentioning all columns in partition by clause. Also whenever we do partition by it alays sort by the first column in partition by doesnt matter if we specify order by a column or select 100
+# In below case it will sort by cid as thats the first column in partition by list, so if we want to sort by a particular column make sure that we put that as first column in partition by and then in order by. However it wont matter
+if we use them in order by or not because mentioning it in partition by will take care of it 
+select * from (select *, row_number() over (partition by cid, studentname, id order by id ) as rownum
+               from students) as tab1
+where rownum = 1
